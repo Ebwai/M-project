@@ -1,0 +1,290 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 22 * * *"
+            }
+          ]
+        }
+      },
+      "id": "63875a77-804f-4718-90b6-6ae1ef70c7b9",
+      "name": "每天 22:30 触发",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1264,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "command": "cat /file/daily_emails.jsonl || echo \"\""
+      },
+      "id": "d40ccb4c-8cba-4890-99af-2f00d8a77048",
+      "name": "读取暂存文件",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        -816,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let raw = $input.first().json.stdout || \"\";\nlet emails = [];\nif (raw.trim() !== \"\") {\n  let lines = raw.split('\\n');\n  for (let line of lines) {\n    if (line.trim()) {\n       try { emails.push(JSON.parse(line)); } catch(e){}\n    }\n  }\n}\nreturn { json: { emailData: JSON.stringify(emails), count: emails.length } };"
+      },
+      "id": "d6c6a6cd-4068-4f1e-84ff-7ade8a077935",
+      "name": "解析数据",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -608,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.count }}",
+              "operation": "larger"
+            }
+          ]
+        }
+      },
+      "id": "0bb50b8c-70cc-4b45-9c3f-4ff109e5e55d",
+      "name": "检查今日是否有邮件",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -416,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "toRecipients": "lpz2025apply@163.com",
+        "subject": "=📊 {{ $today }}邮件精选日报 (22:30)",
+        "bodyContent": "={{ $json.message.content || $json.text }}",
+        "additionalFields": {}
+      },
+      "id": "00a443d2-de9d-4e2b-ad5c-ab825a719a69",
+      "name": "发送 Outlook 日报",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        288,
+        224
+      ],
+      "webhookId": "b20b1505-1cd8-4cf5-bb4b-14c9f726f716",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "zosb6ZPeueosMnPx",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "rm -f /data/daily_emails.jsonl"
+      },
+      "id": "5ad8a36b-a771-4373-90b3-f0feb666e1ab",
+      "name": "清空暂存文件为明日准备",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        656,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "qwen3.5-plus-2026-02-15",
+          "mode": "list",
+          "cachedResultName": "qwen3.5-plus-2026-02-15"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -160,
+        240
+      ],
+      "id": "7209f4e9-f986-4d2a-aab1-3bc900f80a0f",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "cZJ796AysK5Bl04X",
+          "name": "OpenAi account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=以下是今天收集到的待办/待阅读邮件列表（JSON格式数据）。请为我生成一份【今日邮件精选日报】。\n\n要求：\n1. 开头写一句简短的今日概览（例如今天收到了多少封值得关注的邮件）。\n2. 主体分为三大主题板块：💼 **求职与招聘 (Job)**、📅 **活动与讲座 (Activity)**、📌 **其他杂项 (Trivia)**。\n3. 在每个板块内，严格按照邮件的评分 (score) 从高到低排列。\n4. 每封邮件的展示格式如下：\n   - **[分数] 标题** (发件人)\n     💡 一句话核心总结（提取时间、地点、要求或重点信息，绝不啰嗦）。\n5. 如果某个板块没有邮件，请不要显示该板块，或者俏皮地提示“今天该板块空空如也”。\n\n这是今天的邮件数据：\n{{ $json.emailData }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "你是一个高效且贴心的私人助理。你的任务是将一天累积的杂乱邮件数据，整理成一份清晰、美观、一目了然的晚间阅读日报。语气要自然、专业，排版必须使用 Markdown 格式，多用 Emoji 图标来增加可读性。"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        -160,
+        96
+      ],
+      "id": "bc92a495-2880-4dca-a4d6-e4bd3bad4276",
+      "name": "AI 生成晚间日报"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dateTime",
+      "typeVersion": 2,
+      "position": [
+        -1040,
+        112
+      ],
+      "id": "c629904a-7565-445b-8a52-c66fb442d64d",
+      "name": "Date & Time1"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "message:send",
+        "receive_id": "梁沛志",
+        "text_content": "=🚨 **5分重要邮件提醒**\n\n**真实发件人:** {{ $json.realSender }}\n**标题:** {{ $json.subject }}\n\n**摘要:**\n{{ $json.bodyPreview }}",
+        "options": {}
+      },
+      "type": "@luka-cat-mimi/n8n-nodes-feishu.feishuNode",
+      "typeVersion": 1,
+      "position": [
+        288,
+        -48
+      ],
+      "id": "9edabde4-8ff2-4ba7-93bc-08e7b9777657",
+      "name": "邮箱日报",
+      "webhookId": "c1c3fe1e-87bf-4d80-8ca8-35c3215e5a2e",
+      "credentials": {
+        "feishuNodeCredentialsApi": {
+          "id": "BgoHzhnosSiOSmnt",
+          "name": "飞书租户维度 account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "每天 22:30 触发": {
+      "main": [
+        [
+          {
+            "node": "Date & Time1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "读取暂存文件": {
+      "main": [
+        [
+          {
+            "node": "解析数据",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "解析数据": {
+      "main": [
+        [
+          {
+            "node": "检查今日是否有邮件",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "检查今日是否有邮件": {
+      "main": [
+        [
+          {
+            "node": "AI 生成晚间日报",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "发送 Outlook 日报": {
+      "main": [
+        [
+          {
+            "node": "清空暂存文件为明日准备",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI 生成晚间日报",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI 生成晚间日报": {
+      "main": [
+        [
+          {
+            "node": "发送 Outlook 日报",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "邮箱日报",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time1": {
+      "main": [
+        [
+          {
+            "node": "读取暂存文件",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "6a61b0819ff43abcea0ee93ce4487f18bd53629fda8e5628f474139c9c98638d"
+  }
+}
