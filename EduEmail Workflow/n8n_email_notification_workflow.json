@@ -1,0 +1,751 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "id": "4ddda705-34db-40b7-b537-96bf2db8803f",
+      "name": "每10分钟触发",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        -3392,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": true,
+        "output": "raw",
+        "filtersUI": {
+          "values": {
+            "filters": {
+              "readStatus": "unread"
+            }
+          }
+        },
+        "options": {
+          "attachmentsPrefix": "data_",
+          "downloadAttachments": true
+        }
+      },
+      "id": "bbdaf290-0c70-4f7b-8084-e5755729fb5d",
+      "name": "获取 Outlook 邮件",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        -3184,
+        160
+      ],
+      "webhookId": "5f443408-6f7e-4ae1-ba94-5bbfe85d455b",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "zosb6ZPeueosMnPx",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. 在这里填入你 Outlook 各个文件夹的真实 Folder ID\nconst folderIds = {\n  important: \"AQMkADAwATM0MDAAMS0wMzRlLWU0ZDQtMDACLTAwCgAuAAADGxqcrOJwqkOUDVnFcw_6SQEAhrNBk7nAs0q97X6LwbAwYQAHwsT2UwAAAA==\",\n  highJob: \"AQMkADAwATM0MDAAMS0wMzRlLWU0ZDQtMDACLTAwCgAuAAADGxqcrOJwqkOUDVnFcw_6SQEAhrNBk7nAs0q97X6LwbAwYQAHwsT2UgAAAA==\",\n  lowJob: \"AQMkADAwATM0MDAAMS0wMzRlLWU0ZDQtMDACLTAwCgAuAAADGxqcrOJwqkOUDVnFcw_6SQEAhrNBk7nAs0q97X6LwbAwYQAHwsT2UQAAAA==\",\n  highActivity: \"AQMkADAwATM0MDAAMS0wMzRlLWU0ZDQtMDACLTAwCgAuAAADGxqcrOJwqkOUDVnFcw_6SQEAhrNBk7nAs0q97X6LwbAwYQAHwsT2UAAAAA==\",\n  lowActivity: \"AQMkADAwATM0MDAAMS0wMzRlLWU0ZDQtMDACLTAwCgAuAAADGxqcrOJwqkOUDVnFcw_6SQEAhrNBk7nAs0q97X6LwbAwYQAHwsT2TwAAAA==\",\n  overseas: \"AQMkADAwATM0MDAAMS0wMzRlLWU0ZDQtMDACLTAwCgAuAAADGxqcrOJwqkOUDVnFcw_6SQEAhrNBk7nAs0q97X6LwbAwYQAHwsT2VAAAAA==\", \n  trivia: \"AQMkADAwATM0MDAAMS0wMzRlLWU0ZDQtMDACLTAwCgAuAAADGxqcrOJwqkOUDVnFcw_6SQEAhrNBk7nAs0q97X6LwbAwYQAHwiwjaQAAAA==\",\n  rubbish: \"AQMkADAwATM0MDAAMS0wMzRlLWU0ZDQtMDACLTAwCgAuAAADGxqcrOJwqkOUDVnFcw_6SQEAhrNBk7nAs0q97X6LwbAwYQAHwsT2TgAAAA==\"\n};\n\n// 2. 遍历上一层传进来的所有邮件数据\nfor (const item of $input.all()) {\n  let rawSubject = item.json.subject || \"\";\n\n  // 兼容 Structured Output Parser 的输出\n  let ai = item.json.output || item.json.text || item.json;\n  if (typeof ai === 'string') {\n    try { ai = JSON.parse(ai); } catch(e) { ai = {}; }\n  }\n\n  let realSender = (ai.originalSender || item.json.sender?.emailAddress?.address || \"\").toLowerCase();\n\n  let ruleScore = 0;\n  let prefScore = 0;\n\n  // --- 规则模块 ---\n  if (realSender.includes('gradschool@cuhk.edu.hk') || realSender.includes('mscinfo@ee.cuhk.edu.hk')) {\n    ruleScore += 5;\n  }\n  let subLower = rawSubject.toLowerCase();\n  if (subLower.includes('urgent') || subLower.includes('important')) {\n    ruleScore += 5;\n  }\n\n  // 🔥 新增：交学费、交作业、考试直接拉满 5 分！\n  if (ai.isImportantAcademicOrFee) {\n    ruleScore += 5;\n  }\n\n  if (ai.isPersonalOrCompany) ruleScore += 4;\n  if (ai.isJobHunting) ruleScore += 4;\n  if (ai.hasDeadline) ruleScore += 3;\n  if (ai.isActivity) ruleScore += 2;\n  if (ai.isEngineeringOrEE) ruleScore += 2;\n  if (ai.hasGiveaway) ruleScore += 1;\n\n  // --- 偏好加成模块（可与 M-project 记忆库打通） ---\n  if (ai.prefEmbedded) prefScore += 3;\n  if (ai.prefBigTech) prefScore += 2;\n  if (ai.prefEntertainment) prefScore += 1;\n\n  const finalScore = Math.min(5, ruleScore + prefScore);\n\n  let emailCategory = 'trivia';\n  if (ai.isJobHunting) {\n    emailCategory = finalScore >= 4 ? 'highJob' : 'lowJob';\n  } else if (ai.isActivity) {\n    emailCategory = finalScore >= 3 ? 'highActivity' : 'lowActivity';\n  } else if (ai.isImportantAcademicOrFee || ai.hasDeadline) {\n    emailCategory = 'important';\n  }\n\n  let targetFolderId = folderIds[emailCategory] || folderIds.trivia;\n\n  item.json.realSender = realSender;\n  item.json.finalScore = finalScore;\n  item.json.emailCategory = emailCategory;\n  item.json.targetFolderId = targetFolderId;\n}\n\nreturn $input.all();"
+      },
+      "id": "c3139c89-fe62-4c24-b530-259def760f95",
+      "name": "打分引擎与路由计算",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -976,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "messageId": {
+          "__rl": true,
+          "value": "={{ $('获取 Outlook 邮件').item.json.id }}",
+          "mode": "id"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $('打分引擎与路由计算').item.json.targetFolderId }}",
+          "mode": "id"
+        }
+      },
+      "id": "91488d5b-032d-4e49-ad12-64d6ba0af009",
+      "name": "动态移动至对应文件夹",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        144
+      ],
+      "webhookId": "91b608fa-8b43-4685-8cfd-290b517b1cee",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "zosb6ZPeueosMnPx",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $('打分引擎与路由计算').item.json.finalScore }}",
+              "operation": "equal",
+              "value2": 5
+            }
+          ]
+        }
+      },
+      "id": "0788c8c5-9be2-4bc8-9a5c-16324973eec3",
+      "name": "满分 5 分?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -320,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.finalScore }}",
+              "operation": "largerEqual",
+              "value2": 2
+            }
+          ]
+        }
+      },
+      "id": "3fc60bea-f66d-4120-b5f6-f2cdebff9500",
+      "name": "大于等于 2 分?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -64,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "command": "echo '{\"subject\":\"{{ $json.subject.replace(/'/g, \"\") }}\", \"sender\":\"{{ $json.realSender }}\", \"score\":{{ $json.finalScore }}, \"category\":\"{{ $json.emailCategory }}\", \"content\":\"{{ $json.bodyPreview.replace(/\\n/g, \" \").replace(/'/g, \"\") }}\"}' >> /files/daily_emails.jsonl"
+      },
+      "id": "a01edbe0-f89a-46da-bf5b-60694ff8e166",
+      "name": "追加至本地 JSONL",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        208,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "qwen-turbo",
+          "mode": "list",
+          "cachedResultName": "qwen-turbo"
+        },
+        "responsesApiEnabled": false,
+        "options": {}
+      },
+      "id": "13a37af2-faef-4433-809d-4cc381e39580",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -1376,
+        288
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "oAANbVCtw748RbS1",
+          "name": "OpenAi account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "={\n  \"type\": \"object\",\n  \"properties\": {\n    \"originalSender\": {\n      \"type\": \"string\",\n      \"description\": \"提取真正的发件人邮箱。如果正文中包含 From: xxx@yy.com 或发件人: xxx 等转发记录，提取该原始邮箱；若实在找不到，填表面发件人\"\n    },\n    \"isPersonalOrCompany\": {\n      \"type\": \"boolean\",\n      \"description\": \"发件人是否是个人或外部公司？(需要你通过发件人的邮件名进行判断是不是个人邮箱或者是公司邮箱，是的话填true；请注意对于cuhk后缀且名字像机构的邮箱如 curecruit@cuhk.edu.hk,artmuseumnews@cuhk.edu.hk,cumassmailing@cuhk.edu.hk,gip@cuhk.edu.hk,do_not_reply@cuhk.edu.hk,cpdc@cuhk.edu.hk,enf-pip@cuhk.edu.hk,lces@cuhk.edu.hk,SEDS@cuhk.edu.hk,leos@cuhk.edu.hk,do_not_reply@cuhk.edu.hk,student-election@cuhk.edu.hk,engineering@cuhk.edu.hk,mpss@cuhk.edu.hk,info@newsletter.cuhk.edu.hk填false)\"\n    },\n    \"isImportantAcademicOrFee\": {\n      \"type\": \"boolean\",\n      \"description\": \"【核心学业属性】是否涉及交学费、交学杂费（注意：普通活动的报名费不算）、交作业、或者与考试（Exam/Test/Midterm/Final）直接相关的话题？\"\n    },\n    \"hasDeadline\": {\n      \"type\": \"boolean\",\n      \"description\": \"是否包含截止时间/日期？，比如“明天来我办公室”这种表达也算是包含截止时间\"\n    },\n    \"isActivity\": {\n      \"type\": \"boolean\",\n      \"description\": \"是否是关于讲座、研讨会、学生活动、比赛的？\"\n    },\n    \"isEngineeringOrEE\": {\n      \"type\": \"boolean\",\n      \"description\": \"如果是活动，是否和工程学院(Engineering)或电子工程(EE)相关？\"\n    },\n    \"hasGiveaway\": {\n      \"type\": \"boolean\",\n      \"description\": \"是否提到有免费赠品、抽奖、纪念品(souvenir/gift)？\"\n    },\n    \"isJobHunting\": {\n      \"type\": \"boolean\",\n      \"description\": \"是否关于求职、招聘或职场发展的？(【核心强制触发词】：实习/Internship、招聘/Hiring/Recruitment、宣讲会/Recruitment Talk、职位/Job、管培生/MT/Graduate Program、面试/笔试、简历/CV、Career等。只要涉及公司提供工作机会，哪怕标题是讲座也必须填 true)\"\n    },\n    \"prefEmbedded\": {\n      \"type\": \"boolean\",\n      \"description\": \"是否与嵌入式有联系？\"\n    },\n    \"prefBigTech\": {\n      \"type\": \"boolean\",\n      \"description\": \"是否提到知名科技大公司(如Google,腾讯,华为等大厂)？\"\n    },\n    \"prefEntertainment\": {\n      \"type\": \"boolean\",\n      \"description\": \"是否提到古典乐、[... 1838 chars omitted ...]"      },
+      "id": "8a53be71-0fb3-49bf-883c-1789f858304b",
+      "name": "Structured Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        -1232,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=请分析以下邮件内容：\n\n表面发件人: {{ $('获取 Outlook 邮件').item.json.bodyPreview }}\n邮件标题: {{ $('获取 Outlook 邮件').item.json.subject }}\n邮件正文:\n{{ $json.finalbody }}\n当前邮件的发送时间是：{{ $('获取 Outlook 邮件').item.json.receivedDateTime }}。如果在提取活动日期时未看到明确年份，请必须以此年份为基准计算！",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "你是一个精准的邮件分析助手。这批邮件都是从我的教育邮箱自动转发到个人邮箱的，因此表面发件人都是我自己。你的任务是阅读邮件标题和正文，剥离转发信息，找到真正的原始发件人，并根据内容进行分类打标。 【致命要求】你必须且只能输出合法的 JSON 格式对象，不要包含任何 Markdown 代码块标签（如 ```json），不要有任何多余的废话。"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "id": "d987765e-3af4-4416-8cc5-cbc8f840b4f7",
+      "name": "AI 分析语义与真实发件人",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        -1376,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "message:send",
+        "receive_id": "ou_24d8dd986c2a1556784e00e2d4b26b9d",
+        "text_content": "=🚨 **5分重要邮件提醒**\n\n**真实发件人:** {{ $('AI 分析语义与真实发件人').item.json.output.originalSender }}\n**标题:** {{ $('获取 Outlook 邮件').item.json.subject }}\n\n**摘要:**\n\n\n**原文:**\n{{ $('获取 Outlook 邮件').item.json.bodyPreview }}",
+        "options": {}
+      },
+      "id": "6d2571ef-fdca-4a48-9950-0780d51d6318",
+      "name": "重要邮件通知",
+      "type": "@luka-cat-mimi/n8n-nodes-feishu.feishuNode",
+      "typeVersion": 1,
+      "position": [
+        240,
+        -64
+      ],
+      "webhookId": "c1c3fe1e-87bf-4d80-8ca8-35c3215e5a2e",
+      "credentials": {
+        "feishuNodeCredentialsApi": {
+          "id": "BgoHzhnosSiOSmnt",
+          "name": "飞书租户维度 account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "includeTime": false,
+        "options": {}
+      },
+      "id": "2b8a44d7-92ec-41e1-889d-8731dd2783b9",
+      "name": "Date & Time",
+      "type": "n8n-nodes-base.dateTime",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "toRecipients": "lpz2025apply@163.com",
+        "subject": "=❗{{ $today }}重要邮件提醒",
+        "bodyContent": "={{ $json.message.content || $json.text }}",
+        "additionalFields": {}
+      },
+      "id": "68420791-c1f4-4ef7-a9a1-99f7740bc596",
+      "name": "邮件提醒",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        256,
+        112
+      ],
+      "webhookId": "b20b1505-1cd8-4cf5-bb4b-14c9f726f716",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "zosb6ZPeueosMnPx",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "messageId": {
+          "__rl": true,
+          "value": "={{ $('获取 Outlook 邮件').item.json.id }}",
+          "mode": "id"
+        },
+        "updateFields": {
+          "isRead": true
+        }
+      },
+      "id": "56e244cb-3667-4923-ad32-1e1eb03a9f2c",
+      "name": "处理过的邮箱标记为已读",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        144
+      ],
+      "webhookId": "5f443408-6f7e-4ae1-ba94-5bbfe85d455b",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "zosb6ZPeueosMnPx",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "html": "={{ $('获取 Outlook 邮件').item.json.body.content }}",
+        "destinationKey": "markdownBody",
+        "options": {
+          "maxConsecutiveNewlines": 2
+        }
+      },
+      "id": "e74b7fda-fdb9-444a-bd2f-6764b3a7e542",
+      "name": "Markdown",
+      "type": "n8n-nodes-base.markdown",
+      "typeVersion": 1,
+      "position": [
+        -2160,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "model": "qwen/qwen3-vl-235b-a22b-instruct",
+        "options": {}
+      },
+      "id": "38cddac3-b076-4b71-8cec-7de4008708a5",
+      "name": "OpenRouter Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -2512,
+        48
+      ],
+      "credentials": {
+        "openRouterApi": {
+          "id": "niTTJMgDXKbj44jJ",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "请分析以下图片内容",
+        "messages": {
+          "messageValues": [
+            {
+              "type": "HumanMessagePromptTemplate",
+              "messageType": "imageBinary",
+              "binaryImageDataKey": "=target_image"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "id": "f5a61a1a-92f1-4cf1-829f-de44dfae6524",
+      "name": "AI识别附件的图片信息",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        -2512,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const newItems = [];\n\nfor (const item of $input.all()) {\n  let hasImage = false;\n  let targetImage = null;\n\n  // 检查是否有图片附件\n  if (item.binary) {\n    for (const key of Object.keys(item.binary)) {\n      const file = item.binary[key];\n      if (file.mimeType && file.mimeType.startsWith('image/')) {\n        hasImage = true;\n        targetImage = file;\n        break; // 找到第一张图就停止\n      }\n    }\n  }\n\n  // 无论有没有图片，都把邮件放行，但打上不同的标签\n  if (hasImage) {\n    newItems.push({\n      json: { ...item.json, has_image: true },\n      binary: { target_image: targetImage } // 准备好图片给 AI\n    });\n  } else {\n    newItems.push({\n      json: { ...item.json, has_image: false },\n      binary: item.binary // 保持原样\n    });\n  }\n}\n\nreturn newItems;"
+      },
+      "id": "da8b84e9-e484-40b6-924e-1aa1836dfa2e",
+      "name": "Code in JavaScript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2944,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ec543604-b19f-4690-954a-a72488dffc02",
+              "leftValue": "={{ $json.has_image }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0b17f856-5c74-413b-b2af-e322028acd90",
+      "name": "If",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -2768,
+        160
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "ed396884-1166-4c6f-99f3-a467675cda37",
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -1616,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "html": "={{ $('获取 Outlook 邮件').item.json.body.content }}",
+        "destinationKey": "markdownBody",
+        "options": {
+          "maxConsecutiveNewlines": 2
+        }
+      },
+      "id": "7f2cc6cf-49d3-4b75-8570-554c7e70442c",
+      "name": "Markdown1",
+      "type": "n8n-nodes-base.markdown",
+      "typeVersion": 1,
+      "position": [
+        -2320,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bfbea9ce-9abd-45f7-b869-cc26be3d65d3",
+              "name": "finalbody",
+              "value": "={{ $json.markdownBody }} 邮件的图片内容如下：{{ $json.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "da319dfa-391d-436a-aca8-7fc8e2e8c416",
+      "name": "md正文和图片分析拼接字段创建",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1936,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bfbea9ce-9abd-45f7-b869-cc26be3d65d3",
+              "name": "finalbody",
+              "value": "={{ $json.markdownBody }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "107df279-376b-4234-b0ea-9b749365b52e",
+      "name": "正文字段创建",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1968,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "operation": "getAll",
+        "returnAll": true,
+        "filters": {},
+        "options": {}
+      },
+      "id": "45eaa311-6827-47d6-9f3d-bd83ca81481e",
+      "name": "获取 Outlook 每个分类夹的id",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        -3392,
+        -384
+      ],
+      "webhookId": "5f443408-6f7e-4ae1-ba94-5bbfe85d455b",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "zosb6ZPeueosMnPx",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "获取 Outlook 邮件": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI识别附件的图片信息": {
+      "main": [
+        [
+          {
+            "node": "md正文和图片分析拼接字段创建",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "AI识别附件的图片信息",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Markdown1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI识别附件的图片信息",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Markdown1": {
+      "main": [
+        [
+          {
+            "node": "正文字段创建",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "md正文和图片分析拼接字段创建": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "正文字段创建": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "AI 分析语义与真实发件人",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI 分析语义与真实发件人": {
+      "main": [
+        [
+          {
+            "node": "Structured Output Parser",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "main": [
+        [
+          {
+            "node": "打分引擎与路由计算",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "打分引擎与路由计算": {
+      "main": [
+        [
+          {
+            "node": "动态移动至对应文件夹",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "大于等于 2 分?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "动态移动至对应文件夹": {
+      "main": [
+        [
+          {
+            "node": "处理过的邮箱标记为已读",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "大于等于 2 分?": {
+      "main": [
+        [
+          {
+            "node": "追加至本地 JSONL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Date & Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time": {
+      "main": [
+        [
+          {
+            "node": "邮件提醒",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "邮件提醒": {
+      "main": [
+        [
+          {
+            "node": "重要邮件通知",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "处理过的邮箱标记为已读": {
+      "main": [
+        []
+      ]
+    },
+    "每10分钟触发": {
+      "main": [
+        [
+          {
+            "node": "获取 Outlook 邮件",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "获取 Outlook 每个分类夹的id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "获取 Outlook 每个分类夹的id": {
+      "main": [
+        []
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        []
+      ]
+    },
+    "重要邮件通知": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "1b7f5634ea9035adad7f5ddf7d1a34c4834aa0adb511c9177c4b9bb65b630ac3"
+  }
+}
