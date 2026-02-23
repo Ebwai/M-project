@@ -122,7 +122,21 @@ M-project 的目标是：让你不再为“我好像以前学过/看过这个，
   - `docker-compose.yml`、`docker-compose-base.yml`：官方基础 compose 配置。
   - `docker-compose-gpu.yml`：在官方配置基础上调整了 GPU 版本的启动方式，并预留了 MinerU 相关环境变量。
   - `.env`：需要根据你的本机环境修改 RAGFlow、向量库、MinerU 等服务的环境变量。
+  - `.env.example`：已为你准备好的示例配置，可复制为 `.env` 后再按需修改敏感信息。
   启动 RAGFlow 时，建议以该目录下的 compose 文件和 `.env` 为模板，具体说明见 `RAGFLOW config/readme.md`。
+  例如，在命令行中可以这样一键启动（以 CPU 版本为例）：
+
+  ```bash
+  cd "RAGFLOW config"
+  # 第一次使用时，从示例文件复制一份环境变量配置
+  cp .env.example .env      # Windows PowerShell 可使用：Copy-Item .env.example .env
+
+  # 启动 CPU 版本 RAGFlow（使用 docker-compose.yml）
+  docker compose --profile cpu up -d
+
+  # 如需启动 GPU 版本（确保已正确安装并配置 NVIDIA 驱动）：
+  # docker compose --profile gpu up -d
+  ```
 - 在 RAGFlow 中创建至少一个知识库，用于接收来自 Obsidian/n8n 的文档。
 
 ### 3. 部署并配置 n8n
